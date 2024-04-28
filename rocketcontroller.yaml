@@ -27,7 +27,7 @@ globals:
     restore_value: false
   - id: ph_ml_per_second
     type: float
-    initial_value: '5' # ml die der Dispenser pro Sekunde injeziert, kann in HA geändert werden
+    initial_value: '0.8' # ml die der Dispenser pro Sekunde injeziert, kann in HA geändert werden
     restore_value: true
   - id: chlorinator_today_run_time
     type: float
@@ -59,6 +59,10 @@ globals:
   - id: phdispenser_today_run_time
     type: float
     initial_value: '0'
+    restore_value: true
+  - id: can_ph_rest
+    type: float
+    initial_value: '5000'
     restore_value: true
   
   
@@ -156,7 +160,7 @@ status_led:
     inverted: true
 
 #Messungen/Status
-#Bei jedem Zyklus werden die logikfunktionen getriggert und entsprechend Flags (globale Variablen) gesetzt. Zudem wird der Status in der Logausgabe angezeigt
+#Bei jedem Zyklus werden die Logikfunktionen getriggert und entsprechend Flags (globale Variablen) gesetzt. Zudem wird der Status in der Logausgabe angezeigt
 interval:
   - interval: 5s
     then:
@@ -174,6 +178,7 @@ interval:
               id(ph_ml_s_setter).publish_state(id(ph_ml_per_second));
               id(ch_d_max_setter).publish_state(id(chlorinator_run_time_max));
               id(pump_prerun_time_setter).publish_state(id(PumpPreRunTime));
+              
       
 
 
@@ -201,9 +206,10 @@ interval:
                   level: info
 
 
+
 #ORP (Chlorinator)
 #Bei jedem Zyklus werden die Flags geprüft und nach bedarf der Chlorinator eingeschaltet
-  - interval: ${checkIntervalPH}
+  - interval: ${checkIntervalORP}
     then:
       if: 
         condition:
@@ -216,6 +222,11 @@ interval:
               - switch.turn_on: chlorinator
               - logger.log: 
                   format: "Chlorinator über Zeitintervall angefragt."
+                  level: info
+              else:
+              - switch.turn_off: chlorinator
+              - logger.log: 
+                  format: "Chlorinator über Zeitintervall anbgestellt."
                   level: info
 
 
@@ -254,10 +265,14 @@ time:
               format: "Zähler für maximale tägliche Mengen zurückgesetzt."
               level: info
           - lambda: |
+              id(can_ph_rest) = id(can_ph_rest) - id(ph_today_ml);
               id(ph_today_ml) = 0.0;
               id(chlorinator_today_run_time) = 0.0;
               id(ph_cycles) = 1.0;
               id(phdispenser_today_run_time) = 0.0;
+              id(ph_max_reached) = false;
+              id(chlorinator_max_reached) =  false;
+              
                                     
 
 text_sensor:
@@ -275,8 +290,10 @@ text_sensor:
 
 
 uart:
-  rx_pin: GPIO14
-  tx_pin: GPIO13
+ # rx_pin: GPIO14
+ # tx_pin: GPIO13
+  rx_pin: GPIO19
+  tx_pin: GPIO23
   baud_rate: 115200
 
 tuya:
@@ -410,7 +427,7 @@ number:
     optimistic: false
     min_value: 0
     max_value: 1000
-    step: 1
+    step: 0.01
     set_action: 
         lambda: |
          id(ph_ml_per_second)= x;
@@ -534,7 +551,7 @@ switch:
 ######## Vario + ########
   - platform: gpio
     name: "5_Filtern"
-    pin: 15
+    pin: 13
     id: filterspeed
     interlock: [backwashspeed,cleanerspeed]
   - platform: gpio
@@ -544,7 +561,7 @@ switch:
     interlock: [filterspeed,cleanerspeed]
   - platform: gpio
     name: "7_Poolsauger"
-    pin: 16
+    pin: 14
     id: cleanerspeed
     interlock: [backwashspeed,filterspeed]
 
